@@ -22,6 +22,7 @@ export const getAllKos = async (req: Request, res: Response) => {
           kos_facilities: true,
           review: true,
           book: true,
+          kos_img: true
         },
         orderBy: { id: "desc" },
       });
@@ -34,7 +35,7 @@ export const getAllKos = async (req: Request, res: Response) => {
     } catch (error) {
       return res.status(500).json({
         status: false,
-        message: `Yaa get all kos-nya error: ${error}`,
+        message: `Get all kos-nya error: ${error}`,
       });
     }
   };
