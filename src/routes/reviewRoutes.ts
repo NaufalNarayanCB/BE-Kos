@@ -11,4 +11,4 @@ app.post("/reply/:id", verifToken, verifRole(["OWNER"]), ...verifyReplyReview,re
 app.put(`/edit/:id`, verifToken, verifRole(["SOCIETY"]), ...verifyEditReview, updateReview);
 app.delete("/:id", verifToken, deleteReview);
 
-export default app;
+export default app; 

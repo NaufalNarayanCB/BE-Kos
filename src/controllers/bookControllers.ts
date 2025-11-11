@@ -1,8 +1,10 @@
 import { Request, Response } from "express";
 import { PrismaClient, Status } from "@prisma/client";
-//import PDFDocument, { moveDown } from "pdfkit"
+import PDFDocument, { moveDown } from "pdfkit"
 import fs from "fs";
 import path from "path";
+import { BASE_URL } from "../global";
+
 
 const prisma = new PrismaClient({ errorFormat: "pretty" });
 
@@ -334,11 +336,9 @@ export const getBookHistory = async (req: Request, res: Response) => {
   }
 };
 
-export const getBookReceipt = async (req: Request, res: Response) => {
+export const printBookingReceipt = async (request: Request, response: Response) => {
   try {
-    const user = (req as any).user;
-    const { id } = req.params;
-    const { download } = req.query; // <== tambahan query untuk mode download
+    const { id } = request.params
 
     const booking = await prisma.book.findUnique({
       where: { id: Number(id) },
@@ -346,116 +346,89 @@ export const getBookReceipt = async (req: Request, res: Response) => {
         kos: true,
         user: true,
       },
-    });
+    })
 
     if (!booking) {
-      return res.status(404).json({
+      return response.status(404).json({
         status: false,
-        message: "Booking tidak ditemukan",
-      });
+        message: "Booking not found",
+      })
     }
 
-    // ✅ Pastikan booking milik user society yang login
-    if (user.role !== "SOCIETY" || booking.user_id !== user.id) {
-      return res.status(403).json({
-        status: false,
-        message: "Kamu tidak memiliki akses ke nota ini",
-      });
+    // Calculate total price
+    const start = new Date(booking.startDate)
+    const end = new Date(booking.endDate)
+    const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+    const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate() // gets actual days in the month
+    const dailyRate = booking.kos.price_per_month / daysInMonth
+    const total_price = Math.ceil(dailyRate * days)
+
+    // Create PDF
+    const doc = new PDFDocument()
+    const filename = `receipt_${booking.id}_${Date.now()}.pdf`
+    const filepath = path.join(BASE_URL, "..", "public", "receipts", filename)
+
+    // Ensure directory exists
+    const dir = path.dirname(filepath)
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
     }
 
-    if (booking.status !== "ACCEPT") {
-      return res.status(400).json({
-        status: false,
-        message: "Nota hanya bisa dicetak jika booking sudah diterima oleh owner",
-      });
-    }
+    const stream = fs.createWriteStream(filepath)
+    doc.pipe(stream)
 
-    const receipt = {
-      namaPenyewa: booking.user.name,
-      namaKos: booking.kos.name,
-      alamatKos: booking.kos.address,
-      tanggalBooking: `${booking.startDate.toLocaleDateString("id-ID", {
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-      })} - ${booking.endDate.toLocaleDateString("id-ID", {
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-      })}`,
-      hargaPerBulan: booking.kos.price_per_month,
-      totalBayar: booking.kos.price_per_month,
-      status: booking.status,
-      tanggalCetak: new Date().toLocaleDateString("id-ID", {
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-      }),
-    };
+    // Add content
+    doc.fontSize(20).text("BOOKING RECEIPT", { align: "center" })
+    doc.text(`========================================`)
+    doc.moveDown()
+    
+    doc.fontSize(12).text(`Booking ID: ${booking.id}`, { align: "left" })
+    doc.text(`Date: ${new Date().toLocaleDateString()}`)
+    doc.moveDown()
 
-    // 🧾 Jika tidak download, kirim JSON
-    if (!download) {
-      return res.status(200).json({
-        status: true,
-        message: "Nota berhasil diambil",
-        data: receipt,
-      });
-    }
+    doc.text("GUEST INFORMATION", { underline: true })
+    doc.text(`Name: ${booking.user.name}`)
+    doc.text(`Email: ${booking.user.email}`)
+    doc.text(`Phone: ${booking.user.phone}`)
+    doc.moveDown()
 
-    // 📄 Kalau ada query ?download=true → buat PDF
-    //const doc = new PDFDocument({ margin: 50 });
-    //doc.font("Courier");
+    doc.text("KOS INFORMATION", { underline: true })
+    doc.text(`Kos Name: ${booking.kos.name}`)
+    doc.text(`Address: ${booking.kos.address}`)
+    doc.text(`Gender: ${booking.kos.gender}`)
+    doc.moveDown()
 
-    const folderPath = path.join(__dirname, "../../public/kos_receipt");
-    if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath, { recursive: true });
+    doc.text("BOOKING DETAILS", { underline: true })
+    doc.text(`Check-in: ${booking.startDate.toLocaleDateString()}`)
+    doc.text(`Check-out: ${booking.endDate.toLocaleDateString()}`)
+    doc.text(`Duration: ${days} days`)
+    doc.text(`Price per Month: Rp ${booking.kos.price_per_month.toLocaleString("id-ID")}`)
+    doc.font("Helvetica-Bold").text(`Total Price: Rp ${total_price.toLocaleString("id-ID")}`)
+    doc.font("Helvetica")
+    doc.moveDown()
 
-    const filePath = path.join(folderPath, `nota_booking_${booking.id}.pdf`);
-    const stream = fs.createWriteStream(filePath);
-    //doc.pipe(stream);
+    doc.text(`Status: ${booking.status} `)
+    doc.moveDown()
 
-    // 🔹 Header
-   // doc.fontSize(18).text("NOTA PEMESANAN KOS", { align: "center" });
-    //doc.moveDown(2);
-    //doc.fontSize(12);
+    doc.fontSize(10).text("TERIMAKASIII SUDAH BOOKING DI SINI!", { align: "center" })
 
-    // Fungsi bantu untuk sejajarkan teks
-    const addRow = (label: string, value: string | number) => {
-      const spacing = 130; // Lebar kolom label (sesuaikan)
-     // const y = doc.y; // posisi vertikal sekarang
-      //doc.text(`${label}`, 50, y);
-      //doc.text(": ", 50 + spacing - 5, y);
-      //doc.text(String(value), 50 + spacing + 5, y);
-      //doc.moveDown();
-    };
+    doc.end()
 
-    // 🔹 Isi Nota
-    addRow("Nama Penyewa", receipt.namaPenyewa);
-    addRow("Nama Kos", receipt.namaKos);
-    addRow("Alamat Kos", receipt.alamatKos);
-    addRow("Tanggal Booking", receipt.tanggalBooking);
-    addRow("Harga per Bulan", `Rp${receipt.hargaPerBulan.toLocaleString("id-ID")}`);
-    addRow("Total Bayar", `Rp${receipt.totalBayar.toLocaleString("id-ID")}`);
-    addRow("Status", receipt.status);
-    addRow("Tanggal Cetak", receipt.tanggalCetak);
-
-    //doc.moveDown(4);
-    //doc.text("=================================================", { align: "left" });
-    //doc.text("Terima kasih telah menggunakan layanan KosHunter!", {
-      //align: "left",
-    //});
-
-    //doc.end();
-
-    // Setelah PDF selesai dibuat, kirim file ke user
     stream.on("finish", () => {
-      res.download(filePath, `nota_booking_${booking.id}.pdf`, (err) => {
-        if (err) console.error("Gagal mengunduh file:", err);
-      });
-    });
+      response.download(filepath, filename, (err) => {
+        if (err) {
+          console.error("Error downloading file:", err)
+        }
+        // Optionally delete file after download
+        fs.unlink(filepath, (err) => {
+          if (err) console.error("Error deleting file:", err)
+        })
+      })
+    })
   } catch (error) {
-    return res.status(500).json({
+    return response.status(400).json({
       status: false,
-      message: `Error saat mencetak nota: ${error}`,
-    });
+      message: `Error: ${error}`,
+    })
   }
 }
