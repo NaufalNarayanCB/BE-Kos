@@ -1,5 +1,5 @@
 import express from "express"
-import { getAllKos, createKos, updateKos, deleteKos } from "../controllers/kosControllers"
+import { getAllKos,getKosById, createKos, updateKos, deleteKos } from "../controllers/kosControllers"
 import { verifCreateKos, verifEditKos } from "../middlewares/kosVerif"
 import { verifToken, verifRole } from "../middlewares/authorization"
 import { json } from "stream/consumers"
@@ -13,6 +13,8 @@ const app = express()
 app.use(express.json())
 
 app.get("/", getAllKos)
+app.get(`/:id`, [verifToken, verifRole(["OWNER", "SOCIETY"])], getKosById)
+
 app.post("/add", [verifToken, verifRole(["OWNER"]),verifCreateKos], createKos)
 app.put("/edit/:id", [verifToken, verifRole(["OWNER"]), verifEditKos], updateKos)
 app.delete("/delete/:id", [verifToken, verifRole(["OWNER"])], deleteKos)

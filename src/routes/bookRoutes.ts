@@ -11,6 +11,7 @@ app.use(express.urlencoded({ extended: true }));
 app.get(`/`, getAllBook) 
 app.get(`/history`, [verifToken, verifRole(["OWNER"])], getBookHistory)
 app.get("/receipt/pdf/:id", [verifToken, verifRole(["SOCIETY"])], printBookingReceipt);
+
 app.post(`/create`, [verifToken, verifRole(["SOCIETY"]), ...verifyCreateBook], createBook)
 app.put(`/:id`, [verifToken, verifRole(["SOCIETY", "OWNER"]), ...verifyEditBook], updateBook)
 app.delete(`/:id`, [verifToken, verifRole(["SOCIETY"])], deleteBook)

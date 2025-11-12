@@ -38,8 +38,58 @@ export const getAllKos = async (req: Request, res: Response) => {
         message: `Get all kos-nya error: ${error}`,
       });
     }
-  };
+  };  
+
+  export const getKosById = async (request: Request, response: Response) => {
+    try {
+      const { id } = request.params
   
+      const kos = await prisma.kos.findUnique({
+        where: { id: Number(id) },
+        include: {
+          kos_img: true,
+          kos_facilities: true,
+          review: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            },
+          },
+        },
+      })
+  
+      if (!kos) {
+        return response.status(404).json({
+          status: false,
+          message: "Kos not found",
+        })
+      }
+  
+      return response.status(200).json({
+        status: true,
+        data: kos,
+        message: "Kos retrieved successfully",
+      })
+    } catch (error) {
+      return response.status(400).json({
+        status: false,
+        message: `Error: ${error}`,
+      })
+    }
+  }
 
 export const createKos = [
     upload.none(),
@@ -109,24 +159,6 @@ export const updateKos = async (req: Request, res: Response) => {
                 description:        description || findKos.description
             }
         })
-
-        //klo update foto
-        if (req.file) {
-            const oldImg = await prisma.kos_img.findFirst({
-                where: { kos_id: updKos.id }
-            })
-
-            //ngehapus foto yg lama
-            if (oldImg) {
-                let imgPath = path.join(__dirname, `../../public/kos_img/${oldImg.file}`)
-                if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath) 
-                    await prisma.kos_img.delete({where: { id: oldImg.id }})
-            }
-            await prisma.kos_img.create({
-                data: { kos_id: updKos.id, file: req.file.filename }
-            })
-        }
-
         return res.json({
             status: true,
             data: updKos,

@@ -8,6 +8,7 @@ const app = express();
 
 app.get("/", getAllFacility);
 app.get("/:kosId", getFacilityByKosId);
+
 app.post("/create", [verifToken, verifRole(["OWNER"]), ...verifyAddFacility], createFacility);
 app.put("/:id", [verifToken, verifRole(["OWNER"]), ...verifyEditFacility], updateFacility);
 app.delete("/:id", [verifToken, verifRole(["OWNER"])], deleteFacility);
